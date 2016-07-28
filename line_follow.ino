@@ -1,25 +1,27 @@
 #include <Servo.h>
 #include "control.h"
 
-#define SERVO_PIN 5
-
-handler h;
 line l;
-int adjust;
+long adjust = 5;
 Servo steer;
+
+int s_cal, state;
+
+analog_sensor sensors[NUM_A_SENSORS];
+int pin_map[NUM_A_SENSORS] = {A0, A1, A2, A3, A4, A5};
 
 void setup() {
   Serial.begin(9600);
-  h.state = 0;
+  state = 1;
 
-  analog_sensor sensors[NUM_A_SENSORS];
-
-  for(int i = 0; i < NUM_A_SENSORS; i++)
+  for (int i = 0; i < NUM_A_SENSORS; i++)
   {
-    sensors[i].init(i);
+    sensors[i].init(pin_map[i]);
   }
 
   l.init(sensors, NUM_A_SENSORS, &adjust);
+
+  l.load();
 
   steer.attach(SERVO_PIN);
 
@@ -27,17 +29,34 @@ void setup() {
   digitalWrite(ANALOG_TRANSISTOR_PIN, LOW);
 }
 
+
+
 void loop() {
-  resolve_state(h);
-  switch(h.state)
+
+  //if((millis() % 100) < 5)
+    s_cal = digitalRead(CALIBRATE_PIN);
+
+  switch (state)
   {
-     case 0:
-        l.follow();
-        steer.write(90 - adjust);
-        break;
-     case 1:
-        l.calibrate();
-        display_line(l);
-        break;
+    case 1:
+      l.follow();
+      adjust = constrain(adjust, -41, 58);
+      steer.write(90 - adjust);
+      state = s_cal;
+      break;
+    case 0:
+      l.clear_calibration();
+      state = 2;
+    case 2:
+      l.calibrate();
+      display_line(l);
+      if (s_cal == HIGH)
+        state = 3;
+      break;
+    case 3:
+      l.save();
+      state = 1;
+      break;
   }
 }
+
