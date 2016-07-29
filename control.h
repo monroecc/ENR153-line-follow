@@ -1,6 +1,8 @@
 #ifndef CONTROL
     #define CONTROL
 
+    #include "definitions.h"
+
     //#define DEBUG
     //#define DEBUG_EACH
 
@@ -12,6 +14,7 @@
     #define CALIBRATE_PIN 2
     #define ANALOG_TRANSISTOR_PIN 10
     #define SERVO_PIN 3
+    #define EEPROM_OFF 0 * 12  //offset for EEPROM, can be used if the first 12 bytes are written too many times
     
     #include <Arduino.h>
     #include <EEPROMex.h>
@@ -30,7 +33,7 @@
 
         float slice(float err)
         {
-            if(abs(pidd[0]) < abs(pidd[1]))
+            if(abs(pidd[0]) < abs(pidd[1])) //ignore i term when coming back towards the zero error
                 pidd[2] = 0;
 
             pidd[1] = pidd[0];
@@ -59,7 +62,7 @@
 
         int read_sensor()
         {
-            int ret = (int)((analogRead(pin) - min)*scale);
+            int ret = (int)((analogRead(pin) - min)*scale); //calculate normalized sensor value
             ret = constrain(ret, 0, 100);
             return ret;
         }
@@ -78,7 +81,7 @@
 
         static void reset_head()
         {
-            analog_sensor::eeprom_head = 0;
+            analog_sensor::eeprom_head = EEPROM_OFF;
         }
 
         void reset_calibration()
@@ -88,7 +91,7 @@
             this->max = 0;
         }
 
-        void save()
+        void save() //save cailbration (min, max) for this sensor
         {
             EEPROM.writeInt(eeprom_head, min);
             eeprom_head += sizeof(int);
@@ -96,7 +99,7 @@
             eeprom_head += sizeof(int);
         }
 
-        void load()
+        void load() //load calibration for this sensor
         {
             min = EEPROM.readInt(eeprom_head);
             eeprom_head += sizeof(int);
@@ -116,13 +119,13 @@
         PID pidlf;
         int density, nsensors;
         long * adjust;
-        long w, wsum, pos;
-        char linechar;
-        char flag;
+        long w, wsum, pos; //weights, weighted sum, position on line
+        char linechar; //character representation of line
+        char flag; //a flag
     public:
         void init(analog_sensor * a_sensors, int len, long * adj)
         {
-            pidlf.set_pid(.5, 0, 0);
+            pidlf.set_pid(P, I, D); //set pid values, TODO: this should be somewhere else
             adjust = adj;
             sensors = a_sensors;
             nsensors = len;
@@ -130,7 +133,7 @@
             flag = 0;
         }
 
-        void clear_calibration()
+        void clear_calibration() //everytime the car enters calibrate mode the previous calibration is erased
         {
             for (int i = 0; i < nsensors; ++i)
             {
@@ -142,10 +145,11 @@
         {
             for (int i = 0; i < nsensors; ++i)
             {
+                //reads the sensor once and incoperates that into the calibration
                 sensors[i].calibrate_point();
             }
 
-            #ifdef DEBUG_EACH
+            #ifdef DEBUG_EACH //prints out usefull stuff if DEBUG_EACH is defined
                 Serial.print("min: ");
                 for (int i = 0; i < 6; ++i)
                 {
@@ -184,7 +188,8 @@
                 linechar |= (bin << (nsensors - 1 - i));
 
             }
-            pos = wsum/w;
+
+            pos = wsum/w; //weighted average
 
             return pos;
         }
@@ -195,19 +200,14 @@
             return linechar;
         }
 
-        int get_density()
-        {
-            return density;
-        }
-
         void follow()
         {
             this->read_line();
             if(density != 0)
-                *adjust = (long)(pidlf.slice(250.0-(float)pos));
+                *adjust = (long)(pidlf.slice(250.0-(float)pos)); //set the adjustment pointer
         }
 
-        void load()
+        void load() //load in calibration from eeprom for all sensors
         {
             analog_sensor::reset_head();
             for (int i = 0; i < nsensors; ++i)
@@ -216,7 +216,7 @@
             }
         }
 
-        void save()
+        void save() //save the calibration to eeprom for all sensors
         {
             analog_sensor::reset_head();
             for (int i = 0; i < nsensors; ++i)
@@ -226,7 +226,7 @@
         }
     };
 
-    void display_line(line &l)
+    void display_line(line &l) //display the line on bar led, this is chip specific
     {
         char disp = l.get_linechar();
 
@@ -235,16 +235,15 @@
             Serial.println();
         #endif
 
-        DDRC |= 0x3F;
+        DDRC |= 0x3F; //DDR for analog input pins
         PORTC |= (disp & 0x3F);
         PORTC &= (disp | 0xC0);
 
-        digitalWrite(ANALOG_TRANSISTOR_PIN, HIGH);
+        digitalWrite(ANALOG_TRANSISTOR_PIN, HIGH); //TODO: this should be port io
         delay(10);
         digitalWrite(ANALOG_TRANSISTOR_PIN, LOW);
         DDRC &= 0xC0;
     }
-
 
 #endif
 
