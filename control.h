@@ -176,7 +176,9 @@
             linechar = 0x00;
             long sens = 0;
 
-            for (int i = 0; i < nsensors; ++i)
+            w = (long)sensors[0].read_sensor();
+
+            for (int i = 1; i < nsensors; ++i)
             {
                 sens = (long)sensors[i].read_sensor();
 
@@ -185,8 +187,16 @@
 
                 bin = sens > 50;
                 density += bin;
-                linechar |= (bin << (nsensors - 1 - i));
 
+                /* linechar:                    0    0    0    0    0    0    0    0 
+                *  (bin << (nsensors - 1 - 1)): 0    0   bin   0    0    0    0    0 
+                *  (bin << (nsensors - 1 - 2)): 0    0    0   bin   0    0    0    0 
+                *  (bin << (nsensors - 1 - 3)): 0    0    0    0   bin   0    0    0 
+                * ...
+                * final output:                 0    0   b0   b1   b2    b3   b4   b5
+                */
+
+                linechar |= (bin << (nsensors - 1 - i));
             }
 
             pos = wsum/w; //weighted average
