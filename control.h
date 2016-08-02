@@ -176,9 +176,8 @@
             linechar = 0x00;
             long sens = 0;
 
-            w = (long)sensors[0].read_sensor();
 
-            for (int i = 1; i < nsensors; ++i)
+            for (int i = 0; i < nsensors; ++i)
             {
                 sens = (long)sensors[i].read_sensor();
 
