@@ -33,12 +33,16 @@
 
         float slice(float err)
         {
-            if(abs(pidd[0]) < abs(pidd[1])) //ignore i term when coming back towards the zero error
-                pidd[2] = 0;
-
             pidd[1] = pidd[0];
             pidd[0] = err;
-            pidd[2] += (pidd[0] + pidd[1])/2;
+            
+
+            if( abs(pidd[0]) < abs(pidd[1]) ){ //ignore i term when coming back towards the zero error
+                pidd[2] = 0;
+            }else{
+                pidd[2] += (pidd[0] + pidd[1])/2;
+            }
+
             pidd[3] = pidd[0]*w[0] + pidd[2]*w[1] + (pidd[0] - pidd[1]) * w[2];
 
             return pidd[3];
@@ -117,7 +121,7 @@
     private:
         analog_sensor * sensors;
         PID pidlf;
-        int density, nsensors;
+        int nsensors, last_line;
         long * adjust;
         long w, wsum, pos; //weights, weighted sum, position on line
         char linechar; //character representation of line
@@ -131,6 +135,7 @@
             nsensors = len;
             this->read_line();
             flag = 0;
+            last_line = 1;
         }
 
         void clear_calibration() //everytime the car enters calibrate mode the previous calibration is erased
@@ -168,12 +173,11 @@
         }
 
         long read_line()
-        {
-            char bin = 0;
-            density = 0;
-            w = 0; 
-            wsum = 0;
+        {            
+            w = 0; wsum = 0;
             linechar = 0x00;
+
+            char eval = 0x00;
             long sens = 0;
 
 
@@ -184,9 +188,6 @@
                 w += sens;
                 wsum += sens * i * 100;
 
-                bin = sens > 50;
-                density += bin;
-
                 /* linechar:                    0    0    0    0    0    0    0    0 
                 *  (bin << (nsensors - 1 - 1)): 0    0   bin   0    0    0    0    0 
                 *  (bin << (nsensors - 1 - 2)): 0    0    0   bin   0    0    0    0 
@@ -195,10 +196,25 @@
                 * final output:                 0    0   b0   b1   b2    b3   b4   b5
                 */
 
-                linechar |= (bin << (nsensors - 1 - i));
+                linechar |= ( (sens > 50) << (nsensors - 1 - i));
             }
 
-            pos = wsum/w; //weighted average
+            eval = linechar & 0x21;
+
+            if(eval == 0x01){
+                last_line = 1;
+            }
+            else if(eval == 0x20){
+                last_line = 0;
+            }
+
+
+            if(linechar == 0x00){
+                pos = last_line*500;
+            }
+            else{
+                pos = wsum/w;
+            }
 
             return pos;
         }
@@ -212,8 +228,7 @@
         void follow()
         {
             this->read_line();
-            if(density != 0)
-                *adjust = (long)(pidlf.slice(250.0-(float)pos)); //set the adjustment pointer
+            *adjust = (long)(pidlf.slice(250.0-(float)pos)); //set the adjustment pointer
         }
 
         void load() //load in calibration from eeprom for all sensors
@@ -244,14 +259,15 @@
             Serial.println();
         #endif
 
-        DDRC |= 0x3F; //DDR for analog input pins
-        PORTC |= (disp & 0x3F);
-        PORTC &= (disp | 0xC0);
+        DDRC |= 0x3F; //DDR for analog input pins, set to output
+        PORTC |= (disp & 0x3F); // set 1's
+        PORTC &= (disp | 0xC0); // set 0's
 
-        digitalWrite(ANALOG_TRANSISTOR_PIN, HIGH); //TODO: this should be port io
-        delay(10);
-        digitalWrite(ANALOG_TRANSISTOR_PIN, LOW);
-        DDRC &= 0xC0;
+        PORTB |= 0x04; // set transistor pin (10) high
+        delay(10);     // duty cycle adjust
+        PORTB &= 0xFB; // set transistor pin (10) low
+        DDRC &= 0xC0;  // set analog pin to input        
+        delay(10);     // wait for line follow
     }
 
 #endif

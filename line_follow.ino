@@ -12,7 +12,8 @@ int pin_map[NUM_A_SENSORS] = {A0, A1, A2, A3, A4, A5};
 
 void setup() {
   Serial.begin(9600);
-  state = 0;
+  state = -1;
+  s_cal = 0;
 
   for (int i = 0; i < NUM_A_SENSORS; i++)
   {
@@ -33,15 +34,15 @@ void setup() {
 //int ostate = 0;
 void loop() {
 
-  //if((millis() % 100) < 5)
+  if ((millis() % 100) < 5)
     s_cal = digitalRead(CALIBRATE_PIN);
 
-//  if(state != ostate)
-//    Serial.println(state);
-//  ostate = state;
+  //  if(state != ostate)
+  //    Serial.println(state);
+  //  ostate = state;
 
   switch (state)
-  {    
+  {
     case 0:
       l.follow();
       adjust = constrain(adjust, MAX_ADJ_RIGHT, MAX_ADJ_LEFT);
@@ -50,7 +51,9 @@ void loop() {
       break;
     case 1:
       l.clear_calibration();
+      steer.write(SERVO_CENTER - 10);
       state = 2;
+      break;
     case 2:
       l.calibrate();
       display_line(l);
@@ -61,6 +64,8 @@ void loop() {
       l.save();
       state = 0;
       break;
+    default:
+      state = 0;
   }
 }
 

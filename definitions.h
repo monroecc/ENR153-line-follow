@@ -6,10 +6,10 @@
 #define SERVO_CENTER 90 //BOUNDS: [0, 180]
 
  //Limits the max deflection angle that can be set by the PID
-#define MAX_ADJ_LEFT 53 //BOUNDS: [0, 90]
+#define MAX_ADJ_LEFT 51 //BOUNDS: [0, 90]
 #define MAX_ADJ_RIGHT -32 //BOUNDS: [0, 90]
 
 //PID control contants, be very careful adjusting these
-#define P 0.22
+#define P 0.23
 #define I 0.0
-#define D 2.5
+#define D 0.1
