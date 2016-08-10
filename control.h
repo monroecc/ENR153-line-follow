@@ -3,58 +3,63 @@
 
     #include "definitions.h"
 
-    //#define DEBUG
-    //#define DEBUG_EACH
+    //#define DEBUG       // Uncommenting this line prints the binary representation of the line sensor to the console during calibration
+    //#define DEBUG_EACH  // Uncommenting this line prints the min and max line sensor values to the console during calibration
 
     #ifdef DEBUG
-        #include "toolbox.h"
+        #include "toolbox.h" //debug tools
     #endif
 
-    #define NUM_A_SENSORS 6
-    #define CALIBRATE_PIN 2
-    #define ANALOG_TRANSISTOR_PIN 10
-    #define SERVO_PIN 3
-    #define EEPROM_OFF 0 * 12  //offset for EEPROM, can be used if the first 12 bytes are written too many times
+    #define NUM_A_SENSORS 6             // Number of analog sensors, used as array length
+    #define CALIBRATE_PIN 2             // Connected to the calibration pin
+    #define ANALOG_TRANSISTOR_PIN 10    // Pin connected to the transistor base, used to cut the bar led out of the line follow circuit
+    #define SERVO_PIN 3                 // Servo is connected to this pin, it is a PWM pin
     
     #include <Arduino.h>
-    #include <EEPROMex.h>
+    #include <EEPROMex.h> //Make sure you install this via the Arduino IDE, allows writing of things other than bytes
+
     //GENERAL PID
     class PID
     {
     public:
         float pidd[4]; //err, last error, running integral, adjust
-        float w[3];
+        float w[3];    //holds pid constants
+
+        float circ_i[30]; // only worry about summing the last 30 terms of remond sum
+        int head;         // head for circuilar array
 
         void set_pid(float p, float i, float d)
         {
             w[0] = p;w[1] = i;w[2] = d;
             pidd[0] = 0; pidd[1] = 0; pidd[2] = 0;
+            head = 0;
         }
 
         float slice(float err)
         {
-            pidd[1] = pidd[0];
-            pidd[0] = err;
-            
+            pidd[1] = pidd[0];                      // set last err pidd[1]
+            pidd[0] = err;                          // set current err pidd[0]
 
-            if( abs(pidd[0]) < abs(pidd[1]) ){ //ignore i term when coming back towards the zero error
-                pidd[2] = 0;
-            }else{
-                pidd[2] += (pidd[0] + pidd[1])/2;
-            }
+            pidd[2] -= circ_i[head];                // Subract off the element of circ_i you are about to replace
+            circ_i[head] = (pidd[0] + pidd[1])/2;   // Set the element of the cirular array to this "slice" of the integral
+            pidd[2] += circ_i[head];                // Add to integral element pidd[2]
+            head++;                                 // increments head
 
-            pidd[3] = pidd[0]*w[0] + pidd[2]*w[1] + (pidd[0] - pidd[1]) * w[2];
+            if(head == (sizeof(circ_i)/sizeof(float)))
+                head = 0;                           // loop head back around, could use mod but im pretty sure thats slower
 
-            return pidd[3];
+            pidd[3] = pidd[0]*w[0] + pidd[2]*w[1] + (pidd[0] - pidd[1]) * w[2]; // Compute PID output and save it in pidd[3]
+
+            return pidd[3];                                                     // return adjustment
         }
     };
 
     class analog_sensor
     {
     public:
-        int pin, min, max, val;
-        float scale;
-        static int eeprom_head;
+        int pin, min, max //analog pin [0, 5], absolute min for this sensor, absolute max for this sensor
+        float scale;      // Scale value, used to fit any reading to a value between 0-100 (normalize sensor)
+        static int eeprom_head; // The current eeprom position, keeps sensors from overwriting each others calibration
         void init(int arg_pin)
         {
             this->pin = arg_pin;
@@ -66,6 +71,7 @@
 
         int read_sensor()
         {
+            // Nomalize sensor, contrain, and return
             int ret = (int)((analogRead(pin) - min)*scale); //calculate normalized sensor value
             ret = constrain(ret, 0, 100);
             return ret;
@@ -75,12 +81,12 @@
         {
             int cal = analogRead(pin);
             if(cal < min){
-                min = cal;
+                min = cal; // Set new absolute min
             }
             else if(cal > max){
-                max = cal;
+                max = cal;  // Set new absolute max
             }
-            scale = 100.0/(max - min);
+            scale = 100.0/(max - min);  // Compute scale
         }
 
         static void reset_head()
@@ -119,13 +125,13 @@
     class line
     {
     private:
-        analog_sensor * sensors;
-        PID pidlf;
-        int nsensors, last_line;
-        long * adjust;
-        long w, wsum, pos; //weights, weighted sum, position on line
-        char linechar; //character representation of line
-        char flag; //a flag
+        analog_sensor * sensors;    // Array of sensors to compute line position from
+        PID pidlf;                  
+        int nsensors, last_line;    // number of sensors, last_line is the last place the sensor saw the line, either 0 (left) or 1 (right)
+        long * adjust;              // pointer to variable to be adjusted by pid
+        long w, wsum, pos;          //weights, weighted sum, position on line
+        char linechar;              //character representation of line
+        char flag;                  //a flag
     public:
         void init(analog_sensor * a_sensors, int len, long * adj)
         {
@@ -180,6 +186,8 @@
             char eval = 0x00;
             long sens = 0;
 
+            char bin = 0; // binary represntion of sensor, > 50 is 1 <= 50 = 0;
+
 
             for (int i = 0; i < nsensors; ++i)
             {
@@ -187,6 +195,8 @@
 
                 w += sens;
                 wsum += sens * i * 100;
+
+                bin = sens > 50;
 
                 /* linechar:                    0    0    0    0    0    0    0    0 
                 *  (bin << (nsensors - 1 - 1)): 0    0   bin   0    0    0    0    0 
@@ -196,24 +206,21 @@
                 * final output:                 0    0   b0   b1   b2    b3   b4   b5
                 */
 
-                linechar |= ( (sens > 50) << (nsensors - 1 - i));
-            }
+                if(bin)
+                {
+                    last_line = i;
+                }
 
-            eval = linechar & 0x21;
-
-            if(eval == 0x01){
-                last_line = 1;
-            }
-            else if(eval == 0x20){
-                last_line = 0;
+                linechar |= ( (bin) << (nsensors - 1 - i)); // Character represnation of line, written drectly to PORTC when displaying line on bar led
             }
 
 
-            if(linechar == 0x00){
-                pos = last_line*500;
+            if(linechar == 0x00){ // Are we off the line?
+                pos = (last_line >= 4)*500; // if we went off to the right set the position to 500 if we went off to the left set position to zero
+                // this will result in maximum error and maxiumum adjustment back towards the line
             }
             else{
-                pos = wsum/w;
+                pos = wsum/w; // we are still on the line, compute position normally. This weighted average method is used in pololu's library as well
             }
 
             return pos;
@@ -221,14 +228,16 @@
 
         char get_linechar()
         {
+            //return character represntation of the line
             this->read_line();
             return linechar;
         }
 
         void follow()
         {
+            //
             this->read_line();
-            *adjust = (long)(pidlf.slice(250.0-(float)pos)); //set the adjustment pointer
+            *adjust = (long)(pidlf.slice(250.0-(float)pos)); //set the adjustment pointer to the output of the PID, 250 is the center position.
         }
 
         void load() //load in calibration from eeprom for all sensors
