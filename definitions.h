@@ -11,8 +11,11 @@
 
 //PID control contants, be very careful adjusting these
 #define P 0.23
-#define I 0.1
+#define I 0.03
 #define D 0.0
  
 //offset for EEPROM, can be used if the first 12 bytes are written too many times
-#define EEPROM_OFF 0 * 12  
+#define EEPROM_OFF 0 * 12
+
+ //Integral buffer length
+ #define I_BUFFER_LEN 30

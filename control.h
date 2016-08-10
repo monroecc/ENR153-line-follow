@@ -25,7 +25,7 @@
         float pidd[4]; //err, last error, running integral, adjust
         float w[3];    //holds pid constants
 
-        float circ_i[30]; // only worry about summing the last 30 terms of remond sum
+        float circ_i[I_BUFFER_LEN]; // only worry about summing the last 30 terms of remond sum
         int head;         // head for circuilar array
 
         void set_pid(float p, float i, float d)
@@ -33,6 +33,8 @@
             w[0] = p;w[1] = i;w[2] = d;
             pidd[0] = 0; pidd[1] = 0; pidd[2] = 0;
             head = 0;
+
+            memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN);
         }
 
         float slice(float err)
@@ -40,13 +42,19 @@
             pidd[1] = pidd[0];                      // set last err pidd[1]
             pidd[0] = err;                          // set current err pidd[0]
 
-            pidd[2] -= circ_i[head];                // Subract off the element of circ_i you are about to replace
-            circ_i[head] = (pidd[0] + pidd[1])/2;   // Set the element of the cirular array to this "slice" of the integral
-            pidd[2] += circ_i[head];                // Add to integral element pidd[2]
-            head++;                                 // increments head
+            if( abs(pidd[0]) > abs(pidd[1]) ){
+                pidd[2] -= circ_i[head];                // Subract off the element of circ_i you are about to replace
+                circ_i[head] = (pidd[0] + pidd[1])/2;   // Set the element of the cirular array to this "slice" of the integral
+                pidd[2] += circ_i[head];                // Add to integral element pidd[2]
+                head++;                                // increments head
+                if(head == I_BUFFER_LEN)
+                    head = 0;  
+            }else{
+                pidd[2] = 0;
+                if(circ_i[head] != 0)
+                    memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN);
+            }                             
 
-            if(head == (sizeof(circ_i)/sizeof(float)))
-                head = 0;                           // loop head back around, could use mod but im pretty sure thats slower
 
             pidd[3] = pidd[0]*w[0] + pidd[2]*w[1] + (pidd[0] - pidd[1]) * w[2]; // Compute PID output and save it in pidd[3]
 
@@ -57,7 +65,7 @@
     class analog_sensor
     {
     public:
-        int pin, min, max //analog pin [0, 5], absolute min for this sensor, absolute max for this sensor
+        int pin, min, max; //analog pin [0, 5], absolute min for this sensor, absolute max for this sensor
         float scale;      // Scale value, used to fit any reading to a value between 0-100 (normalize sensor)
         static int eeprom_head; // The current eeprom position, keeps sensors from overwriting each others calibration
         void init(int arg_pin)
@@ -66,7 +74,6 @@
             this->scale = 1.0;
             this->min = 2000;
             this->max = 0;
-            this->val = 0;
         }
 
         int read_sensor()
@@ -183,7 +190,6 @@
             w = 0; wsum = 0;
             linechar = 0x00;
 
-            char eval = 0x00;
             long sens = 0;
 
             char bin = 0; // binary represntion of sensor, > 50 is 1 <= 50 = 0;
