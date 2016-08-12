@@ -42,17 +42,20 @@
             pidd[1] = pidd[0];                      // set last err pidd[1]
             pidd[0] = err;                          // set current err pidd[0]
 
+            //The integral term only takes into account the last I_BUFFER_LEN readings. It only sums these readings when the car is moving away from the line. When moving towards the line the integral term is set to zero along with the circular buffer.
             if( abs(pidd[0]) > abs(pidd[1]) ){
                 pidd[2] -= circ_i[head];                // Subract off the element of circ_i you are about to replace
                 circ_i[head] = (pidd[0] + pidd[1])/2;   // Set the element of the cirular array to this "slice" of the integral
                 pidd[2] += circ_i[head];                // Add to integral element pidd[2]
-                head++;                                // increments head
+                head++;                                 // increments head
+
                 if(head == I_BUFFER_LEN)
-                    head = 0;  
-            }else{
+                    head = 0; //wrap around
+
+            }else if(circ_i[head] != 0.0){
+                //only clear the buffer once, readings of zero pretty much never happen
                 pidd[2] = 0;
-                if(circ_i[head] != 0)
-                    memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN);
+                memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN); // clear buffer
             }                             
 
 

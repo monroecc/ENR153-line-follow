@@ -8,7 +8,7 @@ Servo steer;
 int s_cal, state;
 
 analog_sensor sensors[NUM_A_SENSORS];
-int pin_map[NUM_A_SENSORS] = {A0, A1, A2, A3, A4, A5};
+int pin_map[NUM_A_SENSORS] = {A0, A1, A2, A3, A4, A5}; //Just incase we want to reverse the order, or in the event of a redesign adjacent sensors don't need to map to adjacent analog pins.
 
 void setup() {
   Serial.begin(9600);
@@ -31,15 +31,10 @@ void setup() {
 }
 
 
-//int ostate = 0;
 void loop() {
 
-  if ((millis() % 100) < 5)
+  if ((millis() % 100) < 5) //Only check every 100ms. Makes loop faster assuming digitalRead() is slower than logical condition
     s_cal = digitalRead(CALIBRATE_PIN);
-
-  //  if(state != ostate)
-  //    Serial.println(state);
-  //  ostate = state;
 
   switch (state)
   {
@@ -51,7 +46,7 @@ void loop() {
       break;
     case 1:
       l.clear_calibration();
-      steer.write(SERVO_CENTER - 10);
+      steer.write(SERVO_CENTER);
       state = 2;
       break;
     case 2:
