@@ -16,7 +16,7 @@
 // NOTE: We have found that since this system is controlled by a servo which has a specific response delay that adding a derivative term does not improve the pid at all.
 // Adding an integral term however does seem to improve the loop.
 #define P 0.23
-#define I 0.03
+#define I 0.00
 #define D 0.0
 
  

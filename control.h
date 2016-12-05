@@ -25,38 +25,17 @@
         float pidd[4]; //err, last error, running integral, adjust
         float w[3];    //holds pid constants
 
-        float circ_i[I_BUFFER_LEN]; // only worry about summing the last 30 terms of remond sum
-        int head;         // head for circuilar array
-
         void set_pid(float p, float i, float d)
         {
             w[0] = p;w[1] = i;w[2] = d;
             pidd[0] = 0; pidd[1] = 0; pidd[2] = 0;
-            head = 0;
-
-            memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN);
         }
 
         float slice(float err)
         {
             pidd[1] = pidd[0];                      // set last err pidd[1]
             pidd[0] = err;                          // set current err pidd[0]
-
-            //The integral term only takes into account the last I_BUFFER_LEN readings. It only sums these readings when the car is moving away from the line. When moving towards the line the integral term is set to zero along with the circular buffer.
-            if( abs(pidd[0]) > abs(pidd[1]) ){
-                pidd[2] -= circ_i[head];                // Subract off the element of circ_i you are about to replace
-                circ_i[head] = (pidd[0] + pidd[1])/2;   // Set the element of the cirular array to this "slice" of the integral
-                pidd[2] += circ_i[head];                // Add to integral element pidd[2]
-                head++;                                 // increments head
-
-                if(head == I_BUFFER_LEN)
-                    head = 0; //wrap around
-
-            }else if(circ_i[head] != 0.0){
-                //only clear the buffer once, readings of zero pretty much never happen
-                pidd[2] = 0;
-                memset(circ_i, 0x00, sizeof(float)*I_BUFFER_LEN); // clear buffer
-            }                             
+			pidd[2] += err;							// set integral term, time is ~ constant so no need to divide by dt
 
 
             pidd[3] = pidd[0]*w[0] + pidd[2]*w[1] + (pidd[0] - pidd[1]) * w[2]; // Compute PID output and save it in pidd[3]
